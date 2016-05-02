@@ -30,17 +30,12 @@ using namespace std;
 // graph
 struct Node
 {
-	Node *next;
-	size_t vertex;
-	Node(size_t to) : vertex(to), next(NULL) {}
-};
-
-struct Info
-{
-	char base; // ATCG
-	size_t start; // start pos on reference DNA
-	size_t end; // end pos on reference DNA
-	Info(char base, size_t start, size_t end) : base(base), start(start), end(end) {}
+	size_t nextT;
+	size_t nextA;
+	size_t nextG;
+	size_t nextC;
+	char base;
+	Node(char base) :  nextT(0), nextC(0), nextG(0), nextA(0), base(base) {}
 };
 
 // vertex0 = root
@@ -48,22 +43,20 @@ struct Info
 class Graph 
 {
 private:
-	vector<Node *> outwards; 
-	vector<Info> info;
+	vector<Node> outwards; 
 
 public:
 	size_t root;
 
 	Graph() 
 	{
-		root = addVertex('*', 0, 0);
+		root = addVertex('N');
 	}
 
-	size_t addVertex(char base, size_t start, size_t end)
+	size_t addVertex(char aBase)
 	{
 		size_t idx = outwards.size();
-		outwards.push_back(NULL);
-		info.push_back(Info(base, start, end));
+		outwards.push_back(Node(aBase));
 
 		return idx;
 	}
@@ -73,65 +66,37 @@ public:
 		return outwards.size();
 	}
 
-	void addOutwardsVertex(size_t from, size_t to)
-	{
-		Node *next = new Node(to);
-		Node *node = outwards[from];
-		if (node == NULL)
-		{
-			outwards[from] = next;
-		}
-		else
-		{
-			while (node->next != NULL)
-			{
-				node = node->next;
-			}
-			node->next = next;
-		}
-	}
-
 	void addEdge(size_t from, size_t to)
 	{
 		assert(0 <= from && from < countVertex());
 		assert(0 <= to && to < countVertex());
 
-		addOutwardsVertex(from, to);
+		Node& node = outwards[from];
+
+		char toBase = outwards[to].base;
+		switch (toBase)
+		{
+			case 'T': node.nextT = to; break;
+			case 'A': node.nextA = to; break;
+			case 'G': node.nextG = to; break;
+			case 'C': node.nextC = to; break;
+		}
 	}
 
-	bool existOutwardEdge(size_t v, char base)
+	size_t findOutwardVertex(size_t v, char aBase)
 	{
 		assert(0 <= v && v < countVertex());
 	
-		Node *node = outwards[v];
-		while (node)
+		Node& node = outwards[v];
+
+		switch (aBase)
 		{
-			if (info[node->vertex].base == base)
-			{
-				return true;
-			}
-			node = node->next;
+			case 'T': return node.nextT;
+			case 'A': return node.nextA;
+			case 'G': return node.nextG;
+			case 'C': return node.nextC;
 		}
 
-		return false;
-	}
-
-	size_t findOutwardVertex(size_t v, char base, bool& found)
-	{
-		assert(0 <= v && v < countVertex());
-	
-		Node *node = outwards[v];
-		while (node)
-		{
-			if (info[node->vertex].base == base)
-			{
-				found = true;
-				return node->vertex;
-			}
-			node = node->next;
-		}
-
-		found = false;
 		return 0;
 	}
 
@@ -246,37 +211,40 @@ public:
 
 		size_t cnt = 0;
 		size_t lenDNA = currentChromatid.size();
+		size_t lenRead = 15;
 
-		for (size_t start = 0; start < lenDNA - 150; ++start)
+		for (size_t start = 0; start < lenDNA - lenRead; ++start)
 		{
 			if (currentChromatid[start] == 'N')
 			{
 				continue;
 			}
-			
+
 			size_t curr = g.root;
-			for (size_t i = 0; i < 150; ++i)
+			for (size_t i = 0; i < lenRead; ++i)
 			{
 				size_t pos = start + i;
 				char base = currentChromatid[pos];
 
-				bool found;
-				size_t v = g.findOutwardVertex(curr, base, found);
-				if (found)
+				size_t v = g.findOutwardVertex(curr, base);
+				if (v)
 				{
 					curr = v;				
 				}
 				else
 				{
-					size_t v = g.addVertex(base, start, pos);
+					size_t v = g.addVertex(base);
 					g.addEdge(curr, v);
 					curr = v;
 				}
 			}
 
-			if (++cnt % 100000 == 0)
+			if (++cnt % 10000 == 0)
 				cerr << "(" << (start * 100 / lenDNA) << "%) " << g.countVertex() << endl;
 		}
+
+		// debug
+
 
 		return 0;
 	}
