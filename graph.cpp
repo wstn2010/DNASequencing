@@ -37,6 +37,14 @@ struct Node
 	Node(size_t to) : vertex(to), next(NULL) {}
 };
 
+struct Info
+{
+	char base; // ATCG
+	size_t start; // start pos on reference DNA
+	size_t end; // end pos on reference DNA
+	Info(char base, size_t start, size_t end) : base(base), start(start), end(end) {}
+};
+
 // vertex0 = root
 
 class Graph 
@@ -44,20 +52,23 @@ class Graph
 private:
 	vector<Node *> outwards; 
 	vector<Node *> inwards; 
+	vector<Info> info;
 
 public:
 	size_t root;
 
 	Graph() 
 	{
-		root = addVertex();
+		root = addVertex('*', 0, 0);
 	}
 
-	size_t addVertex()
+	size_t addVertex(char base, size_t start, size_t end)
 	{
 		size_t idx = outwards.size();
 		outwards.push_back(NULL);
 		inwards.push_back(NULL);
+		info.push_back(Info(base, start, end));
+
 		return idx;
 	}
 
@@ -115,12 +126,12 @@ public:
 	{
 		assert(0 <= v && v < countVertex());
 	
-		cout << "outward edge of vertex:" << v << " = ";
+		cout << "outward edge of vertex:" << v << "(" << info[v].base << ") = ";
 
 		Node *node = outwards[v];
 		while (node)
 		{
-			cout << node->vertex << " ";
+			cout << node->vertex << "(" << info[node->vertex].base << ") ";
 			node = node->next;
 		}
 
@@ -151,8 +162,8 @@ int main()
 
 	cerr << "#vertex = " << g.countVertex() << endl;
 
-	size_t v1 = g.addVertex();
-	size_t v2 = g.addVertex();
+	size_t v1 = g.addVertex('A', 1, 2);
+	size_t v2 = g.addVertex('G', 1, 3);
 	g.addEdge(g.root, v1);
 	g.addEdge(g.root, v2);
 	g.addEdge(v2, v1);
