@@ -19,8 +19,145 @@
 #include <ctime>
 #include <iomanip>
 
+#include <assert.h>
+
 
 using namespace std;
+
+// 
+// Lightweight graph lib
+// 
+// graph
+struct Node
+{
+	Node *next;
+	size_t vertex;
+	Node(size_t to) : vertex(to), next(NULL) {}
+};
+
+struct Info
+{
+	char base; // ATCG
+	size_t start; // start pos on reference DNA
+	size_t end; // end pos on reference DNA
+	Info(char base, size_t start, size_t end) : base(base), start(start), end(end) {}
+};
+
+// vertex0 = root
+
+class Graph 
+{
+private:
+	vector<Node *> outwards; 
+	vector<Node *> inwards; 
+	vector<Info> info;
+
+public:
+	size_t root;
+
+	Graph() 
+	{
+		root = addVertex('*', 0, 0);
+	}
+
+	size_t addVertex(char base, size_t start, size_t end)
+	{
+		size_t idx = outwards.size();
+		outwards.push_back(NULL);
+		inwards.push_back(NULL);
+		info.push_back(Info(base, start, end));
+
+		return idx;
+	}
+
+	size_t countVertex()
+	{
+		return outwards.size();
+	}
+
+	void addOutwardsVertex(size_t from, size_t to)
+	{
+		Node *next = new Node(to);
+		Node *node = outwards[from];
+		if (node == NULL)
+		{
+			outwards[from] = next;
+		}
+		else
+		{
+			while (node->next != NULL)
+			{
+				node = node->next;
+			}
+			node->next = next;
+		}
+	}
+
+	void addInwardsVertex(size_t from, size_t to)
+	{
+		Node *prev = new Node(from);
+		Node *node = inwards[to];
+		if (node == NULL)
+		{
+			inwards[to] = prev;
+		}
+		else
+		{
+			while (node->next != NULL)
+			{
+				node = node->next;
+			}
+			node->next = prev;
+		}
+	}
+
+	void addEdge(size_t from, size_t to)
+	{
+		assert(0 <= from && from < countVertex());
+		assert(0 <= to && to < countVertex());
+
+		addOutwardsVertex(from, to);
+		addInwardsVertex(from, to);
+	}
+
+	void showOutwardEdge(size_t v)
+	{
+		assert(0 <= v && v < countVertex());
+	
+		cout << "outward edge of vertex:" << v << "(" << info[v].base << ") = ";
+
+		Node *node = outwards[v];
+		while (node)
+		{
+			cout << node->vertex << "(" << info[node->vertex].base << ") ";
+			node = node->next;
+		}
+
+		cout << endl;
+	}
+
+	void showinwardEdge(size_t v)
+	{
+		assert(0 <= v && v < countVertex());
+	
+		cout << "inward edge of vertex:" << v << " = ";
+
+		Node *node = inwards[v];
+		while (node)
+		{
+			cout << node->vertex << " ";
+			node = node->next;
+		}
+
+		cout << endl;
+	}
+
+};
+
+//
+// end 
+//
+
 
 // trim from start (in place)
 static inline void ltrim(string &s) {
@@ -91,24 +228,24 @@ class DNASequencing
 
   vector<string> results;
   
-  string chromatids[24];
-
   int currentChromatidSequenceId;
+  string currentChromatid;
+
+  Graph g;
 
 public:
       
 	int passReferenceGenome(int chromatidSequenceId, vector<string> chromatidSequence) 
 	{
-		string whole;
+		currentChromatid = "";
 
 		for (int i = 0; i < chromatidSequence.size(); ++i)
 		{
 			trim(chromatidSequence[i]);
-			whole += chromatidSequence[i];
+			currentChromatid += chromatidSequence[i];
 		}
 
 		currentChromatidSequenceId = chromatidSequenceId;
-		chromatids[chromatidSequenceId - 1] = whole;
 
 		cerr << "passReferenceGenome: id=" << chromatidSequenceId << endl;
 
@@ -122,6 +259,8 @@ public:
 
 	int preProcessing() 
 	{
+
+
 		return 0;
 	}
 
@@ -188,7 +327,7 @@ private:
 	// readは正順のみ
 	void align(Result& result, string& r)
 	{
-		string& c = chromatids[currentChromatidSequenceId - 1];
+		string& c = currentChromatid;
 		size_t len = r.size();
 		size_t bestPos = -1;
 		float bestRate = 0.0;
