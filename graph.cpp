@@ -154,25 +154,103 @@ public:
 		cout << endl;
 	}
 
+	bool existOutwardEdge(size_t v, char base)
+	{
+		assert(0 <= v && v < countVertex());
+	
+		Node *node = outwards[v];
+		while (node)
+		{
+			if (info[node->vertex].base == base)
+			{
+				return true;
+			}
+			node = node->next;
+		}
+
+		return false;
+	}
+
+	size_t findOutwardVertex(size_t v, char base, bool& found)
+	{
+		assert(0 <= v && v < countVertex());
+	
+		Node *node = outwards[v];
+		while (node)
+		{
+			if (info[node->vertex].base == base)
+			{
+				found = true;
+				return node->vertex;
+			}
+			node = node->next;
+		}
+
+		found = false;
+		return 0;
+	}
 };
+
+// int main()
+// {
+// 	Graph g;
+
+// 	cerr << "#vertex = " << g.countVertex() << endl;
+
+// 	size_t v1 = g.addVertex('A', 1, 2);
+// 	size_t v2 = g.addVertex('G', 1, 3);
+// 	g.addEdge(g.root, v1);
+// 	g.addEdge(g.root, v2);
+// 	g.addEdge(v2, v1);
+
+// 	g.showOutwardEdge(g.root);
+// 	g.showOutwardEdge(v1);
+// 	g.showOutwardEdge(v2);
+
+// 	g.showinwardEdge(v1);
+
+// 	cout << "existOutwardEdge(g.root, 'A') = " << g.existOutwardEdge(g.root, 'A') << endl;
+// 	cout << "existOutwardEdge(g.root, 'T') = " << g.existOutwardEdge(g.root, 'T') << endl;
+
+// 	return 0;
+// }
 
 int main()
 {
 	Graph g;
 
-	cerr << "#vertex = " << g.countVertex() << endl;
+	cerr << "building graph" << endl;
 
-	size_t v1 = g.addVertex('A', 1, 2);
-	size_t v2 = g.addVertex('G', 1, 3);
-	g.addEdge(g.root, v1);
-	g.addEdge(g.root, v2);
-	g.addEdge(v2, v1);
+	string currentChromatid = "TGTGAAGCCAGGTA";
+	size_t len = 3;
 
-	g.showOutwardEdge(g.root);
-	g.showOutwardEdge(v1);
-	g.showOutwardEdge(v2);
+	for (size_t start = 0; start < currentChromatid.size() - len; ++start)
+	{
+		size_t curr = g.root;
+		for (size_t i = 0; i < len; ++i)
+		{
+			size_t pos = start + i;
+			char base = currentChromatid[pos];
 
-	g.showinwardEdge(v1);
+			bool found;
+			size_t v = g.findOutwardVertex(curr, base, found);
+			if (found)
+			{
+				curr = v;				
+			}
+			else
+			{
+				size_t v = g.addVertex(base, start, pos);
+				g.addEdge(curr, v);
+				curr = v;
+			}
+		}
+	}
+
+	g.showOutwardEdge(0);
+	g.showOutwardEdge(1);
+	g.showOutwardEdge(2);
+	g.showOutwardEdge(3);
 
 	return 0;
 }

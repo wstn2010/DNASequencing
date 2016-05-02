@@ -49,7 +49,6 @@ class Graph
 {
 private:
 	vector<Node *> outwards; 
-	vector<Node *> inwards; 
 	vector<Info> info;
 
 public:
@@ -64,7 +63,6 @@ public:
 	{
 		size_t idx = outwards.size();
 		outwards.push_back(NULL);
-		inwards.push_back(NULL);
 		info.push_back(Info(base, start, end));
 
 		return idx;
@@ -93,63 +91,48 @@ public:
 		}
 	}
 
-	void addInwardsVertex(size_t from, size_t to)
-	{
-		Node *prev = new Node(from);
-		Node *node = inwards[to];
-		if (node == NULL)
-		{
-			inwards[to] = prev;
-		}
-		else
-		{
-			while (node->next != NULL)
-			{
-				node = node->next;
-			}
-			node->next = prev;
-		}
-	}
-
 	void addEdge(size_t from, size_t to)
 	{
 		assert(0 <= from && from < countVertex());
 		assert(0 <= to && to < countVertex());
 
 		addOutwardsVertex(from, to);
-		addInwardsVertex(from, to);
 	}
 
-	void showOutwardEdge(size_t v)
+	bool existOutwardEdge(size_t v, char base)
 	{
 		assert(0 <= v && v < countVertex());
 	
-		cout << "outward edge of vertex:" << v << "(" << info[v].base << ") = ";
-
 		Node *node = outwards[v];
 		while (node)
 		{
-			cout << node->vertex << "(" << info[node->vertex].base << ") ";
+			if (info[node->vertex].base == base)
+			{
+				return true;
+			}
 			node = node->next;
 		}
 
-		cout << endl;
+		return false;
 	}
 
-	void showinwardEdge(size_t v)
+	size_t findOutwardVertex(size_t v, char base, bool& found)
 	{
 		assert(0 <= v && v < countVertex());
 	
-		cout << "inward edge of vertex:" << v << " = ";
-
-		Node *node = inwards[v];
+		Node *node = outwards[v];
 		while (node)
 		{
-			cout << node->vertex << " ";
+			if (info[node->vertex].base == base)
+			{
+				found = true;
+				return node->vertex;
+			}
 			node = node->next;
 		}
 
-		cout << endl;
+		found = false;
+		return 0;
 	}
 
 };
@@ -259,7 +242,41 @@ public:
 
 	int preProcessing() 
 	{
+		cerr << "building graph for Chromatid" << currentChromatidSequenceId << endl;
 
+		size_t cnt = 0;
+		size_t lenDNA = currentChromatid.size();
+
+		for (size_t start = 0; start < lenDNA - 150; ++start)
+		{
+			if (currentChromatid[start] == 'N')
+			{
+				continue;
+			}
+			
+			size_t curr = g.root;
+			for (size_t i = 0; i < 150; ++i)
+			{
+				size_t pos = start + i;
+				char base = currentChromatid[pos];
+
+				bool found;
+				size_t v = g.findOutwardVertex(curr, base, found);
+				if (found)
+				{
+					curr = v;				
+				}
+				else
+				{
+					size_t v = g.addVertex(base, start, pos);
+					g.addEdge(curr, v);
+					curr = v;
+				}
+			}
+
+			if (++cnt % 100000 == 0)
+				cerr << "(" << (start * 100 / lenDNA) << "%) " << g.countVertex() << endl;
+		}
 
 		return 0;
 	}
