@@ -54,6 +54,8 @@ struct Result {
 };
 
 // utils
+size_t bits[256];
+
 
 string createReverseRead(string read)
 {
@@ -87,6 +89,72 @@ string toResultStr(Result& r)
 	return ss.str();
 }
 
+void setBitwiseRead(uint64_t bitwiseRead[], string& c, size_t len)
+{
+	for (size_t i = 0; i < len; ++i) 
+	{
+		size_t pos = i * 32;
+		uint64_t v = 0;
+		for (size_t dt = 0; dt < 32; ++dt)
+		{
+			v += bits[c[pos + dt]];
+			if (dt != 31)
+			{
+				v <<= 2;
+			}
+		}
+
+		bitwiseRead[i] = v;
+	}
+}
+			
+void setExtractedPart(uint64_t whole[], size_t len, uint64_t part[], size_t startPos)
+{
+	size_t base = startPos / 32;
+	size_t offset = (startPos % 32) * 2;
+
+	for (size_t i = 0; i < len; ++i) 
+	{
+		uint64_t cur = whole[base + i];
+		uint64_t nxt = whole[base + i + 1];
+
+		part[i] = ((cur << offset) & (~((1 << offset) - 1))) | (nxt >> (32 - offset));
+	}
+}
+
+uint countBit(uint64_t val)
+{
+	// XXX: できれば64bitでやりたい
+	uint32_t h = (uint32_t)(val >> 32);
+	h = (h & 0x55555555) + ((h >> 1) & 0x55555555);
+	h = (h & 0x33333333) + ((h >> 2) & 0x33333333);
+	h = (h & 0x0f0f0f0f) + ((h >> 4) & 0x0f0f0f0f);
+	h = (h & 0x00ff00ff) + ((h >> 8) & 0x00ff00ff);
+	h = (h & 0x0000ffff) + ((h >>16) & 0x0000ffff);
+
+	uint32_t l = (uint32_t)(val & UINT64_C(0x00000000ffffffff));
+	l = (l & 0x55555555) + ((l >> 1) & 0x55555555);
+	l = (l & 0x33333333) + ((l >> 2) & 0x33333333);
+	l = (l & 0x0f0f0f0f) + ((l >> 4) & 0x0f0f0f0f);
+	l = (l & 0x00ff00ff) + ((l >> 8) & 0x00ff00ff);
+	l = (l & 0x0000ffff) + ((l >>16) & 0x0000ffff);
+
+	return h + l;
+}
+
+uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
+{
+	uint cnt = 0;
+	for (size_t i = 0; i < len; ++i)
+	{
+		cnt += countBit(v1[i] ^ v2[i]);
+	}
+
+	return cnt;
+}
+
+
+
 #define LEN_READ 150
 
 
@@ -100,8 +168,6 @@ class DNASequencing
 	int currentChromatidSequenceId;
 
 	vector< vector<size_t> > fastRef;
-
-	size_t bits[256];
 
 	uint64_t *bitwiseDNA;
 
@@ -282,6 +348,13 @@ private:
 		size_t len = r.size();
 		size_t bestPos = -1;
 		float bestRate = 0.0;
+		uint64_t bitwisePartialDNA[5];
+
+		// 0. bitwiseReadを生成
+		// align to x32
+		uint64_t bitwiseRead[5];
+		string alignedRead = r + string(10, 'N');
+		setBitwiseRead(bitwiseRead, alignedRead, 5);
 
 		size_t key = calcKey(r, 0);
 		vector<size_t>& startPositions = fastRef[key];
@@ -290,7 +363,17 @@ private:
 		{
 			size_t startPos = *it;
 
-			float rate = calcMatchRate(c, startPos, len, r);
+			// 1. bitwiseDNAをロード
+			setExtractedPart(bitwiseDNA, 5, bitwisePartialDNA, startPos);
+
+			// 3. xorと1-countでrate計算：あとは同じ
+			uint diff = countDiff(bitwisePartialDNA, bitwiseRead, 5);
+			cerr << "D" << hex << bitwisePartialDNA[0] << endl;
+			cerr << "R" << hex << bitwiseRead[0] << endl;			
+			cerr << "diff: " << diff << endl;
+			float rate = (len - diff) / (float)len;
+
+			// float rate = calcMatchRate(c, startPos, len, r);
 			if (rate > bestRate)
 			{
 				bestRate = rate;
@@ -385,14 +468,68 @@ bool loadReads(vector<string>& readNames, vector<string>& reads)
 	return true;
 }
 
+template<typename T, typename U>
+void assertEqualHex(T expected, U value)
+{
+	cerr << ">> " << hex << value << endl << dec;
+	assert(value == expected);
+}
+
+template<typename T, typename U>
+void assertEqual(T expected, U value)
+{
+	cerr << ">> " << value << endl;
+	assert(value == expected);
+}
+
 int main() {
+
+	DNASequencing dnaSequencing;
 
 	// unit test
 	string test_srq = "CTAG";
-	assert(createReverseRead(test_srq) == "CTAG");
+	assertEqual(createReverseRead(test_srq), string("CTAG"));
 
 	string test_srq2 = "TGTC";
-	assert(createReverseRead(test_srq2) == "GACA");
+	assertEqual(createReverseRead(test_srq2), string("GACA"));
+
+	uint64_t whole[6];
+	for (size_t i = 0; i < 6; ++i)
+	{
+		whole[i] = UINT64_C(0x00FF00FF00FF00FF);
+	}
+	uint64_t part[5];
+	setExtractedPart(whole, 5, part, 0);
+	assertEqualHex(part[0], UINT64_C(0x00FF00FF00FF00FF));
+
+	setExtractedPart(whole, 5, part, 1);
+	assertEqualHex(part[0],UINT64_C(0x03FC03FC03FC03FC));
+
+	setExtractedPart(whole, 5, part, 32);
+	assertEqualHex(part[0], UINT64_C(0x00FF00FF00FF00FF));
+
+	setExtractedPart(whole, 5, part, 4);
+	assertEqualHex(part[0], UINT64_C(0xFF00FF00FF00FF00));
+
+	assertEqual(32, countBit(UINT64_C(0xFF00FF00FF00FF00)));
+
+	uint64_t v1[1], v2[1];
+	v1[0] = UINT64_C(0xFF00FF00FF00FF00);
+	v2[0] = UINT64_C(0xFF00FF00FF01FF00);
+	assertEqual(1, countDiff(v1, v2, 1));
+
+	v2[0] = UINT64_C(0xFF10FF10FF01F000);
+	assertEqual(7, countDiff(v1, v2, 1));
+
+	string read1 = "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT";
+	setBitwiseRead(part, read1, 1);
+	assertEqual(0, part[0]);
+
+	string read2 = "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTAA";
+	setBitwiseRead(part, read2, 1);
+	assertEqual(5, part[0]);
+
+	cerr << "unit test passed." << endl;
 
 	// start evaluating
 	clock_t begin = clock();
@@ -406,8 +543,6 @@ int main() {
 
 	if (!loadReads(readNames, reads))
 		return 0;
-
-	DNASequencing dnaSequencing;
 
 	dnaSequencing.passReferenceGenome(20, chromatidSequence);
 
