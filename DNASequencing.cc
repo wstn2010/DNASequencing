@@ -19,6 +19,8 @@
 #include <ctime>
 #include <iomanip>
 
+#include <assert.h>
+#include <cstdint>
 
 using namespace std;
 
@@ -79,7 +81,8 @@ string toResultStr(Result& r)
 {
 	stringstream ss;
 
-	ss << r.readName << "," << r.chromatidSequenceId << "," << (r.startPos + 1) << "," << (r.endPos + 1) << "," << (r.strand ? '+' : '-') << "," << fixed << setprecision(2) << r.score;
+	ss << r.readName << "," << r.chromatidSequenceId << "," << (r.startPos + 1) << "," << (r.endPos + 1) 
+	<< "," << (r.strand ? '+' : '-') << "," << fixed << setprecision(2) << r.score;
 
 	return ss.str();
 }
@@ -91,7 +94,7 @@ class DNASequencing
 {
 
 	vector<string> results;
-	
+
 	string chromatids;
 
 	int currentChromatidSequenceId;
@@ -100,10 +103,13 @@ class DNASequencing
 
 	size_t bits[256];
 
+	uint64_t *bitwiseDNA;
+
+
 public:
 
 	DNASequencing()
-	: fastRef(65536)
+	: fastRef(65536), bitwiseDNA(NULL)
 	{
 		bits['T'] = 0;
 		bits['A'] = 1;
@@ -111,9 +117,12 @@ public:
 		bits['G'] = 3;
 		bits['N'] = 0; // dummy
 	}
-	
+
 	int passReferenceGenome(int chromatidSequenceId, vector<string> chromatidSequence) 
 	{
+		currentChromatidSequenceId = chromatidSequenceId;
+		cerr << "passReferenceGenome: id=" << chromatidSequenceId << endl;
+
 		chromatids = "";
 		for (int i = 0; i < chromatidSequence.size(); ++i)
 		{
@@ -121,9 +130,12 @@ public:
 			chromatids += chromatidSequence[i];
 		}
 
-		currentChromatidSequenceId = chromatidSequenceId;
-
-		cerr << "passReferenceGenome: id=" << chromatidSequenceId << endl;
+		// align with 32chars
+		size_t n = chromatids.size() % 32;
+		if (n != 0)
+		{
+			chromatids += string(32 - n, 'N');
+		}
 
 		return 0;
 	}
@@ -153,9 +165,40 @@ public:
 
 	int preProcessing() 
 	{
-		cerr << "preprocessing..." << endl;
+		string& c = chromatids;
 
-		size_t lenDNA = chromatids.size();
+		size_t lenDNA = c.size();
+		cerr << "lenDNA:" << lenDNA << endl;
+
+		cerr << "preprocessing1..." << endl;
+
+		// DNA has aligned.
+		size_t bitwiseLen = lenDNA / 32;
+		cerr << "bitwiseLen:" << bitwiseLen << endl;
+
+		if (bitwiseDNA != NULL)
+		{
+			delete bitwiseDNA;
+		}
+		bitwiseDNA = new uint64_t[bitwiseLen];
+
+		for (size_t i = 0; i < bitwiseLen; ++i) 
+		{
+			size_t pos = i * 32;
+			uint64_t v = 0;
+			for (size_t dt = 0; dt < 32; ++dt)
+			{
+				v += bits[c[pos + dt]];
+				if (dt != 31)
+				{
+					v <<= 2;
+				}
+			}
+
+			bitwiseDNA[i] = v;
+		}
+
+		cerr << "preprocessing2..." << endl;
 
 		size_t max = 0;
 
@@ -185,8 +228,6 @@ public:
 
 		for (int i = 0; i < n; ++i)
 		{
-			// cerr << "read" << i << endl;
-
 			string normalRead = reads[i];
 			string reverseRead = createReverseRead(normalRead);
 
@@ -196,14 +237,7 @@ public:
 			align(normalResult, normalRead);
 			align(reverseResult, reverseRead);
 
-			if (normalResult.score > reverseResult.score)
-			{
-				results.push_back(toResultStr(normalResult));
-			}
-			else
-			{
-				results.push_back(toResultStr(reverseResult));
-			}
+			results.push_back(toResultStr(normalResult.score > reverseResult.score ? normalResult : reverseResult));
 
 			if (++cnt % 1000 == 0)
 			{
@@ -282,19 +316,19 @@ private:
 
 ***********************************************************************************************/
 
-	 bool loadChromatidSequence(vector<string>& v)
-	 {
-	 	const char *filename = "chromatid20.fa";
+bool loadChromatidSequence(vector<string>& v)
+{
+	const char *filename = "chromatid20.fa";
 
-	 	std::ifstream ifs(filename);
-	 	std::string str;
-	 	if (ifs.fail())
-	 	{
-	 		std::cerr << "失敗" << std::endl;
-	 		return false;
-	 	}
+	std::ifstream ifs(filename);
+	std::string str;
+	if (ifs.fail())
+	{
+		std::cerr << "失敗" << std::endl;
+	 	return false;
+	}
 
-	 	int lines = 0;
+	int lines = 0;
 
     getline(ifs, str); // skip header
     while (getline(ifs, str))
@@ -342,6 +376,9 @@ bool loadReads(vector<string>& readNames, vector<string>& reads)
 		reads.push_back(str1);
 		reads.push_back(str2);
 
+		if (reads.size() == 20)
+			break;
+
 	}
 
 	std::cerr << " loaded " << reads.size() << "reads" << std::endl;
@@ -350,6 +387,14 @@ bool loadReads(vector<string>& readNames, vector<string>& reads)
 
 int main() {
 
+	// unit test
+	string test_srq = "CTAG";
+	assert(createReverseRead(test_srq) == "CTAG");
+
+	string test_srq2 = "TGTC";
+	assert(createReverseRead(test_srq2) == "GACA");
+
+	// start evaluating
 	clock_t begin = clock();
 
 	vector<string> chromatidSequence;
