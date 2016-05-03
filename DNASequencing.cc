@@ -24,18 +24,18 @@ using namespace std;
 
 // trim from start (in place)
 static inline void ltrim(string &s) {
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
 }
 
 // trim from end (in place)
 static inline void rtrim(string &s) {
-    s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+	s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
 }
 
 // trim from both ends (in place)
 static inline void trim(std::string &s) {
-    ltrim(s);
-    rtrim(s);
+	ltrim(s);
+	rtrim(s);
 }
 
 struct Result {
@@ -91,7 +91,7 @@ class DNASequencing
 {
 
 	vector<string> results;
-  
+	
 	string chromatids;
 
 	int currentChromatidSequenceId;
@@ -111,7 +111,7 @@ public:
 		bits['G'] = 3;
 		bits['N'] = 0; // dummy
 	}
-      
+	
 	int passReferenceGenome(int chromatidSequenceId, vector<string> chromatidSequence) 
 	{
 		chromatids = "";
@@ -282,27 +282,27 @@ private:
 
 ***********************************************************************************************/
 
-bool loadChromatidSequence(vector<string>& v)
-{
-    const char *filename = "chromatid20.fa";
+	 bool loadChromatidSequence(vector<string>& v)
+	 {
+	 	const char *filename = "chromatid20.fa";
 
-    std::ifstream ifs(filename);
-    std::string str;
-    if (ifs.fail())
-    {
-        std::cerr << "失敗" << std::endl;
-        return false;
-    }
+	 	std::ifstream ifs(filename);
+	 	std::string str;
+	 	if (ifs.fail())
+	 	{
+	 		std::cerr << "失敗" << std::endl;
+	 		return false;
+	 	}
 
-    int lines = 0;
+	 	int lines = 0;
 
     getline(ifs, str); // skip header
     while (getline(ifs, str))
     {
-        if (++lines % 10000 == 0)
-            std::cerr << ".";
+    	if (++lines % 10000 == 0)
+    		std::cerr << ".";
 
-        v.push_back(str);
+    	v.push_back(str);
     }
 
     std::cerr << " loaded" << std::endl;
@@ -311,40 +311,40 @@ bool loadChromatidSequence(vector<string>& v)
 
 bool loadReads(vector<string>& readNames, vector<string>& reads)
 {
-   const char *basename = "small5";
-   string name1(basename);
-   string name2(basename);
+	const char *basename = "small5";
+	string name1(basename);
+	string name2(basename);
 
-   name1.append(".fa1");
-   name2.append(".fa2");
+	name1.append(".fa1");
+	name2.append(".fa2");
 
-    std::ifstream ifs1(name1);
-    std::ifstream ifs2(name2);
-    if (ifs1.fail() || ifs2.fail())
-    {
-        std::cerr << "失敗" << std::endl;
-        return false;
-    }
+	std::ifstream ifs1(name1);
+	std::ifstream ifs2(name2);
+	if (ifs1.fail() || ifs2.fail())
+	{
+		std::cerr << "失敗" << std::endl;
+		return false;
+	}
 
-    int lines = 0;
-    std::string str1;
-    std::string str2;
+	int lines = 0;
+	std::string str1;
+	std::string str2;
 
-    while (getline(ifs1, str1) && getline(ifs2, str2))
-    {
-        if (++lines % 10000 == 0)
-            std::cerr << ".";
+	while (getline(ifs1, str1) && getline(ifs2, str2))
+	{
+		if (++lines % 10000 == 0)
+			std::cerr << ".";
 
-        readNames.push_back(str1.substr(1));
-        readNames.push_back(str2.substr(1));
+		readNames.push_back(str1.substr(1));
+		readNames.push_back(str2.substr(1));
 
-	    getline(ifs1, str1) && getline(ifs2, str2);
-	    reads.push_back(str1);
-	    reads.push_back(str2);
+		getline(ifs1, str1) && getline(ifs2, str2);
+		reads.push_back(str1);
+		reads.push_back(str2);
 
-    }
+	}
 
-    std::cerr << " loaded " << reads.size() << "reads" << std::endl;
+	std::cerr << " loaded " << reads.size() << "reads" << std::endl;
 	return true;
 }
 
@@ -362,13 +362,13 @@ int main() {
 	if (!loadReads(readNames, reads))
 		return 0;
 
-    DNASequencing dnaSequencing;
+	DNASequencing dnaSequencing;
 
-    dnaSequencing.passReferenceGenome(20, chromatidSequence);
+	dnaSequencing.passReferenceGenome(20, chromatidSequence);
 
-    dnaSequencing.initTest(0);
+	dnaSequencing.initTest(0);
 
-    dnaSequencing.preProcessing();
+	dnaSequencing.preProcessing();
 
 	clock_t end = clock();
 	cerr << "*** preprocess *** " << (end - begin) / (double) CLOCKS_PER_SEC << "(sec)" << endl;
