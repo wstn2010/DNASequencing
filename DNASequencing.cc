@@ -50,8 +50,8 @@ struct Result {
 	size_t endPos;
 	bool strand;
 	float score;
-	Result(string readName, int chromatidSequenceId, bool strand)
-	: readName(readName), chromatidSequenceId(chromatidSequenceId), startPos(0), endPos(0), strand(strand), score(-1)
+	Result(string readName, bool strand)
+	: readName(readName), startPos(0), endPos(0), strand(strand), score(-1)
 	{
 	}
 };
@@ -154,6 +154,8 @@ uint countBit(uint64_t val)
 #define MASK_L UINT64_C(0xAAAAAAAAAAAAAAAA)
 #define MASK_H UINT64_C(0x5555555555555555)
 
+#define SZ_FAST_REF 4194304L
+
 // 2bitづつの区切りで、異なるときはそれぞれdiff=1としなくてはだめ
 uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
 {
@@ -179,19 +181,22 @@ class DNASequencing
 
 	vector<string> results;
 
-	string chromatids;
+	// string chromatids;
 
-	int currentChromatidSequenceId;
+	// int currentChromatidSequenceId;
 
+	// idx: 先頭・末尾から求まるキー、val: {geneID(H8bit), pos}のベクタ
 	vector< vector<size_t> > fastRef;
 
-	uint64_t *bitwiseDNA;
+	// uint64_t *bitwiseDNA;
+
+	map< size_t, uint64_t *> dnaMap;
 
 
 public:
 
 	DNASequencing()
-	: fastRef(65536), bitwiseDNA(NULL)
+	: fastRef(SZ_FAST_REF)
 	{
 		bits['T'] = 0;
 		bits['A'] = 1;
@@ -200,12 +205,12 @@ public:
 		bits['N'] = 0; // dummy
 	}
 
-	int passReferenceGenome(int chromatidSequenceId, vector<string> chromatidSequence) 
+	int passReferenceGenome(int id, vector<string> chromatidSequence) 
 	{
-		currentChromatidSequenceId = chromatidSequenceId;
-		cerr << "passReferenceGenome: id=" << chromatidSequenceId << endl;
+		cerr << "passReferenceGenome: id=" << id << endl;
 
-		chromatids = "";
+		string chromatids = "";
+
 		for (int i = 0; i < chromatidSequence.size(); ++i)
 		{
 			trim(chromatidSequence[i]);
@@ -219,91 +224,49 @@ public:
 			chromatids += string(32 - n, 'N');
 		}
 
+		cerr << "creating bitwise DNA: id=" << id << endl;
+		dnaMap[id] = createBitwiseDNA(chromatids);
+
+		cerr << "creating fastRef: id=" << id << endl;
+		setupFastRef(id, chromatids);
+
 		return 0;
 	}
 
 	int initTest(int) 
 	{
+		cerr << "initTest done." << endl;
 		return 0;
 	}
 
-	size_t calcKey(string& c, size_t offset)
-	{
-		size_t pos = offset;
-		size_t los = pos + LEN_READ - 1;
-
-		size_t k1 = bits[c[pos + 0]] << 14;
-		size_t k2 = bits[c[pos + 1]] << 12;
-		size_t k3 = bits[c[pos + 2]] << 10;
-		size_t k4 = bits[c[pos + 3]] <<  8;
-		size_t k5 = bits[c[los - 3]] <<  6;
-		size_t k6 = bits[c[los - 2]] <<  4;
-		size_t k7 = bits[c[los - 1]] <<  2;
-		size_t k8 = bits[c[los - 0]] <<  0;
-
-		size_t key = k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8;
-		return key;
-	}
 
 	int preProcessing() 
 	{
-		string& c = chromatids;
 
-		size_t lenDNA = c.size();
-		cerr << "lenDNA:" << lenDNA << endl;
+		cerr << "preProcessing...." << endl;
 
-		cerr << "preprocessing1..." << endl;
-
-		// DNA has aligned.
-		size_t bitwiseLen = lenDNA / 32;
-		cerr << "bitwiseLen:" << bitwiseLen << endl;
-
-		if (bitwiseDNA != NULL)
-		{
-			delete bitwiseDNA;
-		}
-		bitwiseDNA = new uint64_t[bitwiseLen];
-
-		for (size_t i = 0; i < bitwiseLen; ++i) 
-		{
-			size_t pos = i * 32;
-			uint64_t v = 0;
-			for (size_t dt = 0; dt < 32; ++dt)
-			{
-				v |= bits[c[pos + dt]];
-				if (dt != 31)
-				{
-					v <<= 2;
-				}
-			}
-
-			bitwiseDNA[i] = v;
-
-			// verified: c.substr(pos, 32) = bitset<64>(v) 
-
-		}
-
-		cerr << "preprocessing2..." << endl;
-
+		size_t under10 = 0;
+		size_t under100 = 0;
+		size_t under1000 = 0;
+		size_t under10000 = 0;
 		size_t max = 0;
-
-		for (size_t pos = 0; pos < lenDNA - LEN_READ; ++pos)
+		for (size_t i = 0; i < SZ_FAST_REF; ++i)
 		{
-			if (chromatids[pos] == 'N')
-			{
-				continue;
-			}
-
-			size_t key = calcKey(chromatids, pos);
-
-			fastRef[key].push_back(pos);
-
-			size_t sz = fastRef[key].size();
+			size_t sz = fastRef[i].size();
 			max = max > sz ? max : sz;
-		}
+			if (sz < 10) ++under10;
+			if (sz < 100) ++under100;
+			if (sz < 1000) ++under1000;
+			if (sz < 10000) ++under10000;
+		}		
 
-		cerr << "done. max-len:" << max << endl;
+		cerr << "max-len of fastRef: " << max << endl;
+		cerr << "under10: " << under10 << endl;
+		cerr << "under100: " << under100 << endl;
+		cerr << "under1000: " << under1000 << endl;
+		cerr << "under10000: " << under10000 << endl;
 
+		cerr << "preProcessing done." << endl;
 		return 0;
 	}
 
@@ -318,8 +281,8 @@ public:
 			string normalRead = reads[i];
 			string reverseRead = createReverseRead(normalRead);
 
-			Result normalResult(readNames[i], currentChromatidSequenceId, true);
-			Result reverseResult(readNames[i], currentChromatidSequenceId, false);
+			Result normalResult(readNames[i], true);
+			Result reverseResult(readNames[i], false);
 
 			align(normalResult, normalRead);
 			align(reverseResult, reverseRead);
@@ -339,17 +302,84 @@ public:
 
 private:
 
+	size_t calcKey(string& c, size_t offset)
+	{
+		size_t pos = offset;
+		size_t los = pos + LEN_READ - 1;
+
+		size_t k1 = bits[c[pos + 0]] << 20;
+		size_t k2 = bits[c[pos + 1]] << 18;
+		size_t k3 = bits[c[pos + 2]] << 14;
+		size_t k4 = bits[c[pos + 3]] << 12;
+		size_t k5 = bits[c[pos + 4]] << 10;
+		size_t k6 = bits[c[los - 4]] <<  8;
+		size_t k7 = bits[c[los - 3]] <<  6;
+		size_t k8 = bits[c[los - 2]] <<  4;
+		size_t k9 = bits[c[los - 1]] <<  2;
+		size_t ka = bits[c[los - 0]] <<  0;
+
+		return k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8 + k9 + ka;
+	}
+
+	uint64_t *createBitwiseDNA(string& chromatids)
+	{
+		string& c = chromatids;
+
+		size_t lenDNA = c.size();
+		cerr << "lenDNA:" << lenDNA << endl;
+
+		// DNA has aligned.
+		size_t bitwiseLen = lenDNA / 32;
+		cerr << "bitwiseLen:" << bitwiseLen << endl;
+
+		uint64_t *bitwiseDNA = new uint64_t[bitwiseLen];
+
+		for (size_t i = 0; i < bitwiseLen; ++i) 
+		{
+			size_t pos = i * 32;
+			uint64_t v = 0;
+			for (size_t dt = 0; dt < 32; ++dt)
+			{
+				v |= bits[c[pos + dt]];
+				if (dt != 31)
+				{
+					v <<= 2;
+				}
+			}
+
+			bitwiseDNA[i] = v;
+		}
+
+		return bitwiseDNA;
+	}
+
+	void setupFastRef(size_t id, string& chromatids)
+	{
+		size_t lenDNA = chromatids.size();
+
+		for (size_t pos = 0; pos < lenDNA - LEN_READ; ++pos)
+		{
+			if (chromatids[pos] == 'N')
+			{
+				continue;
+			}
+
+			size_t key = calcKey(chromatids, pos);
+
+			size_t val = (id << 32) | pos;
+			fastRef[key].push_back(val);
+		}
+	}
+
 	// readは正順のみ
 	void align(Result& result, string& r)
 	{
-		string& c = chromatids;
-		size_t lenDNA = c.size();
 		size_t len = r.size();
 		size_t bestPos = -1;
+		size_t bestId = 0;
 		float bestRate = 0.0;
 		uint64_t bitwisePartialDNA[5];
 		uint64_t bestBitwisePartialDNA[5];
-
 
 		// 0. bitwiseReadを生成
 		// align to x32
@@ -360,12 +390,28 @@ private:
 		size_t key = calcKey(r, 0);
 		vector<size_t>& startPositions = fastRef[key];
 
+		if (startPositions.size() == 0)
+		{
+			// algorythm broken
+			result.startPos = 1;
+			result.endPos = 1 + len;
+			result.score = 0.0;
+			result.chromatidSequenceId = 20;
+			return;
+		}
+
 		int completedMatchCount = 0;
 		int semiCompleteMatchCount = 0;
 
 		for (vector<size_t>::iterator it = startPositions.begin(); it != startPositions.end(); ++it)
 		{
 			size_t startPos = *it;
+
+			size_t id = startPos >> 32;
+
+			startPos = startPos & 0x00000000ffffffff;
+
+			uint64_t *bitwiseDNA = dnaMap[id];
 
 			// 1. bitwiseDNAをロード
 			setExtractedPart(bitwiseDNA, 5, bitwisePartialDNA, startPos);
@@ -374,11 +420,11 @@ private:
 			uint diff = countDiff(bitwisePartialDNA, bitwiseRead, 5);
 			float rate = (len - diff) / (float)len;
 
-			// float rate = calcMatchRate(c, startPos, len, r);
 			if (rate > bestRate)
 			{
 				bestRate = rate;
 				bestPos = startPos;
+				bestId = id;
 			}
 
 			switch (diff)
@@ -402,6 +448,7 @@ private:
 		result.startPos = bestPos;
 		result.endPos = bestPos + len;
 		result.score = bestRate;
+		result.chromatidSequenceId = bestId;
 	}
 
 };
