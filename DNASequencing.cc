@@ -51,7 +51,7 @@ struct Result {
 	bool strand;
 	float score;
 	Result(string readName, int chromatidSequenceId, bool strand)
-	: readName(readName), strand(strand), chromatidSequenceId(chromatidSequenceId), startPos(0), endPos(0), score(-1)
+	: readName(readName), chromatidSequenceId(chromatidSequenceId), startPos(0), endPos(0), strand(strand), score(-1)
 	{
 	}
 };
@@ -113,7 +113,6 @@ void setBitwiseRead(uint64_t bitwiseRead[], string& c, size_t len)
 			
 #define MASK_END UINT64_C(0xFFFFFFFFFFF00000)
 
-bool retry; // debug
 
 void setExtractedPart(uint64_t whole[], size_t len, uint64_t part[], size_t startPos)
 {
@@ -125,23 +124,11 @@ void setExtractedPart(uint64_t whole[], size_t len, uint64_t part[], size_t star
 		uint64_t cur = whole[base + i];
 		uint64_t nxt = whole[base + i + 1];
 
-		// part[i] = ((cur << offset) & (~((1 << offset) - 1))) | (nxt >> (64 - offset));
 		part[i] = (cur << offset) | (nxt >> (64 - offset));
-
-		// if (retry)
-		// {
-
-		// 	cerr << "cur : " << bitset<64>(cur) << endl;
-		// 	cerr << "nxt : " << bitset<64>(nxt) << endl;
-		// 	cerr << "offset: " << offset << endl;
-		 	// cerr << "part[" << i << "] = " << bitset<64>(part[i]) << endl;
-		// }
 	}
 
 	// お尻10文字は0fill: 20bit=2byte+4bit=0x00000
 	part[len - 1] &= MASK_END;
-
-
 }
 
 uint countBit(uint64_t val)
@@ -175,6 +162,7 @@ uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
 	{
 		uint64_t val = v1[i] ^ v2[i];
 		uint64_t adjusted = (val & MASK_H) | ((val & MASK_L) >> 1);
+
 		cnt += countBit(adjusted);
 	}
 
@@ -351,17 +339,6 @@ public:
 
 private:
 
-	void w64(uint64_t v[], size_t n)
-	{
-		for (size_t i = 0; i < n; ++i)
-		{
-			cout << bitset<64>(v[i]);
-			if (i != n - 1)
-				cout << "_";
-		}
-		cout << endl;
-	}
-
 	// readは正順のみ
 	void align(Result& result, string& r)
 	{
@@ -384,6 +361,7 @@ private:
 		vector<size_t>& startPositions = fastRef[key];
 
 		int completedMatchCount = 0;
+		int semiCompleteMatchCount = 0;
 
 		for (vector<size_t>::iterator it = startPositions.begin(); it != startPositions.end(); ++it)
 		{
@@ -401,13 +379,12 @@ private:
 			{
 				bestRate = rate;
 				bestPos = startPos;
-				memcpy(bestBitwisePartialDNA, bitwisePartialDNA, sizeof(uint64_t) * 5);
-				// cerr << "best pos=" << startPos << " score=" << rate << endl;
 			}
 
-			if (rate == 1.0) {
-				++completedMatchCount;
-				// break;
+			switch (diff)
+			{
+				case 0: ++completedMatchCount; break;
+				case 1: ++semiCompleteMatchCount; break;
 			}
 
 		}
@@ -415,25 +392,16 @@ private:
 		// 完全一致が複数ある場合
 		if (completedMatchCount > 1)
 		{
-			bestRate = 1 / completedMatchCount;
-		}
+			bestRate = 1.0 / completedMatchCount;
+		} 
+		else if (semiCompleteMatchCount > 1)
+		{
+			bestRate = 1.0 / semiCompleteMatchCount;
+		} 
 
 		result.startPos = bestPos;
 		result.endPos = bestPos + len;
 		result.score = bestRate;
-
-		// cerr << "score:" << bestRate << endl;
-		// cerr << "read: " << r.substr(0, 150) << endl;
-		// w64(bitwiseRead, 5);
-		// cerr << "DNA : " << c.substr(bestPos, 150) << endl;
-		// w64(bestBitwisePartialDNA, 5);
-
-		// cerr << "retry" << endl;
-		// retry = true;
-		// setExtractedPart(bitwiseDNA, 5, bestBitwisePartialDNA, bestPos);
-		// w64(bestBitwisePartialDNA, 5);
-		// exit(0);
-
 	}
 
 };
@@ -693,6 +661,13 @@ int main() {
 	double speed = 1.0 / norm_s * (1.0 - time_cutoff / time_cut_off);
 	cerr << "speed = " << speed << endl;
 	cerr << "score = " << (test_norm * accuracy * speed) << endl;
+
+	cout << "*** results *** " << time_cutoff << "(sec)" << endl;
+	for (vector<string>::iterator it = results.begin(); it != results.end(); ++it)
+	{
+		cout << *it << endl;
+	}
+
 	return 0;
 }
 #endif
