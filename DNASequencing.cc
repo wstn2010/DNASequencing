@@ -209,13 +209,9 @@ class DNASequencing
 
 	vector<string> results;
 
-	// idx: 先頭・末尾から求まるキー、val: {geneID(H8bit), pos}のベクタ
 	vector< vector<size_t> > fastRef;
 
-	// uint64_t *bitwiseDNA;
-
 	map< size_t, uint64_t *> dnaMap;
-
 
 public:
 
@@ -255,42 +251,19 @@ public:
 
 	int initTest(int) 
 	{
-		cerr << "initTest done." << endl;
 		return 0;
 	}
 
 
 	int preProcessing() 
 	{
-		cerr << "preProcessing...." << endl;
-
-		// size_t under10 = 0;
-		// size_t under100 = 0;
-		// size_t under1000 = 0;
-		// size_t under10000 = 0;
-		// size_t max = 0;
-		// for (size_t i = 0; i < SZ_FAST_REF; ++i)
-		// {
-		// 	size_t sz = fastRef[i].size();
-		// 	max = max > sz ? max : sz;
-		// 	if (sz < 10) ++under10;
-		// 	if (sz < 100) ++under100;
-		// 	if (sz < 1000) ++under1000;
-		// 	if (sz < 10000) ++under10000;
-		// }		
-
-		// cerr << "max-len of fastRef: " << max << endl;
-		// cerr << "under10: " << under10 << endl;
-		// cerr << "under100: " << under100 << endl;
-		// cerr << "under1000: " << under1000 << endl;
-		// cerr << "under10000: " << under10000 << endl;
-
-		cerr << "preProcessing done." << endl;
 		return 0;
 	}
 
 	vector<string> getAlignment(int n, double normA, double normS, vector<string> readNames, vector<string> reads) 
 	{
+		cerr << "getAlignment: n=" << n << " normA=" << normA << " normS=" << normS << endl;
+		
 		results.clear();
 		size_t cnt = 0;
 
