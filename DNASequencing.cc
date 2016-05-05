@@ -56,9 +56,38 @@ struct Result {
 	}
 };
 
+#define LEN_READ 150
+#define SZ_FAST_REF 16777216L
+
 // utils
 size_t bits[256];
 
+void initBits()
+{
+  bits['T'] = 0;
+  bits['A'] = 1;
+  bits['C'] = 2;
+  bits['G'] = 3;
+  bits['N'] = 0; // dummy
+}
+
+size_t calcKey(string& c, size_t pos)
+{
+  size_t k1 = bits[c[pos + 0]] << 22;
+  size_t k2 = bits[c[pos + 1]] << 20;
+  size_t k3 = bits[c[pos + 2]] << 18;
+  size_t k4 = bits[c[pos + 3]] << 16;
+  size_t k5 = bits[c[pos + 4]] << 14;
+  size_t k6 = bits[c[pos + 5]] << 12;
+  size_t k7 = bits[c[pos + 6]] << 10;
+  size_t k8 = bits[c[pos + 7]] <<  8;
+  size_t k9 = bits[c[pos + 8]] <<  6;
+  size_t ka = bits[c[pos + 9]] <<  4;
+  size_t kb = bits[c[pos +10]] <<  2;
+  size_t kc = bits[c[pos +11]] <<  0;
+
+  return k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8 + k9 + ka + kb + kc;
+}
 
 string createReverseRead(string read)
 {
@@ -154,7 +183,6 @@ uint countBit(uint64_t val)
 #define MASK_L UINT64_C(0xAAAAAAAAAAAAAAAA)
 #define MASK_H UINT64_C(0x5555555555555555)
 
-#define SZ_FAST_REF 4194304L
 
 // 2bitづつの区切りで、異なるときはそれぞれdiff=1としなくてはだめ
 uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
@@ -181,10 +209,6 @@ class DNASequencing
 
 	vector<string> results;
 
-	// string chromatids;
-
-	// int currentChromatidSequenceId;
-
 	// idx: 先頭・末尾から求まるキー、val: {geneID(H8bit), pos}のベクタ
 	vector< vector<size_t> > fastRef;
 
@@ -198,11 +222,7 @@ public:
 	DNASequencing()
 	: fastRef(SZ_FAST_REF)
 	{
-		bits['T'] = 0;
-		bits['A'] = 1;
-		bits['C'] = 2;
-		bits['G'] = 3;
-		bits['N'] = 0; // dummy
+	  initBits();
 	}
 
 	int passReferenceGenome(int id, vector<string> chromatidSequence) 
@@ -302,24 +322,6 @@ public:
 
 private:
 
-	size_t calcKey(string& c, size_t offset)
-	{
-		size_t pos = offset;
-		size_t los = pos + LEN_READ - 1;
-
-		size_t k1 = bits[c[pos + 0]] << 20;
-		size_t k2 = bits[c[pos + 1]] << 18;
-		size_t k3 = bits[c[pos + 2]] << 14;
-		size_t k4 = bits[c[pos + 3]] << 12;
-		size_t k5 = bits[c[pos + 4]] << 10;
-		size_t k6 = bits[c[los - 4]] <<  8;
-		size_t k7 = bits[c[los - 3]] <<  6;
-		size_t k8 = bits[c[los - 2]] <<  4;
-		size_t k9 = bits[c[los - 1]] <<  2;
-		size_t ka = bits[c[los - 0]] <<  0;
-
-		return k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8 + k9 + ka;
-	}
 
 	uint64_t *createBitwiseDNA(string& chromatids)
 	{
@@ -374,7 +376,6 @@ private:
 	// readは正順のみ
 	void align(Result& result, string& r)
 	{
-		size_t len = r.size();
 		size_t bestPos = -1;
 		size_t bestId = 0;
 		float bestRate = 0.0;
@@ -394,7 +395,7 @@ private:
 		{
 			// algorythm broken
 			result.startPos = 1;
-			result.endPos = 1 + len;
+			result.endPos = 1 + LEN_READ;
 			result.score = 0.0;
 			result.chromatidSequenceId = 20;
 			return;
@@ -418,7 +419,7 @@ private:
 
 			// 3. xorと1-countでrate計算：あとは同じ
 			uint diff = countDiff(bitwisePartialDNA, bitwiseRead, 5);
-			float rate = (len - diff) / (float)len;
+			float rate = 1 - diff / (float)LEN_READ;
 
 			if (rate > bestRate)
 			{
@@ -446,7 +447,7 @@ private:
 		} 
 
 		result.startPos = bestPos;
-		result.endPos = bestPos + len;
+		result.endPos = bestPos + LEN_READ;
 		result.score = bestRate;
 		result.chromatidSequenceId = bestId;
 	}
