@@ -22,8 +22,8 @@
 #include <assert.h>
 #include <cstdint>
 
-#define LOCAL_ONLY
-// #define TEST_BENCH
+// #define LOCAL_ONLY
+#define UNIT_TEST
 
 using namespace std;
 
@@ -199,6 +199,36 @@ uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
 	return cnt;
 }
 
+uint nlz(uint64_t x)
+{
+	x |= x >> 1;
+	x |= x >> 2;
+	x |= x >> 4;
+	x |= x >> 8;
+	x |= x >> 16;
+	x |= x >> 32;
+
+	return countBit(x);
+}
+
+// 最初の差異ビットの位置を返す：だいたいでよい
+uint findStartDifferencePos(uint64_t v1[], uint64_t v2[], size_t len)
+{
+	uint cnt = 0;
+	for (size_t i = 0; i < len; ++i)
+	{
+		uint64_t val = v1[i] ^ v2[i];
+		uint64_t adjusted = (val & MASK_H) | ((val & MASK_L) >> 1);
+
+		uint first = nlz(adjusted);
+		if (first != 0)
+		{
+			return i * 64 + first;
+		}
+	}
+
+	return -1;
+}
 
 
 #define LEN_READ 150
@@ -263,7 +293,7 @@ public:
 	vector<string> getAlignment(int n, double normA, double normS, vector<string> readNames, vector<string> reads) 
 	{
 		cerr << "getAlignment: n=" << n << " normA=" << normA << " normS=" << normS << endl;
-		
+
 		results.clear();
 		size_t cnt = 0;
 
@@ -346,7 +376,6 @@ private:
 		}
 	}
 
-	// readは正順のみ
 	void align(Result& result, string& r)
 	{
 		size_t bestPos = -1;
@@ -392,6 +421,34 @@ private:
 
 			// 3. xorと1-countでrate計算：あとは同じ
 			uint diff = countDiff(bitwisePartialDNA, bitwiseRead, 5);
+
+			if (diff >= 2)
+			{
+				// 通しビット：24 < v < 300 - 80 までの値
+				uint startDifferencePos = findStartDifferencePos(bitwisePartialDNA, bitwiseRead, 5);
+				if (startDifferencePos != -1 && (24 + 4) < startDifferencePos && startDifferencePos < (300 - 80))
+				{
+					// 欠落一致トライ後のdiffを求める
+					uint newDiff = evaluateDeletion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos);
+					if (newDiff < diff)
+					{
+						// found a deletion
+						diff = newDiff;
+					} 
+					else
+					{
+						newDiff = evaluateInsertion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos);
+						if (newDiff < diff)
+						{
+							// found an insertion
+							diff = newDiff;
+						}
+					}
+
+				}
+
+			}
+
 			float rate = 1 - diff / (float)LEN_READ;
 
 			if (rate > bestRate)
@@ -423,6 +480,16 @@ private:
 		result.endPos = bestPos + LEN_READ;
 		result.score = bestRate;
 		result.chromatidSequenceId = bestId;
+	}
+
+	uint evaluateDeletion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], size_t n, uint startDifferencePos)
+	{
+		return 10000;		
+	}
+
+	uint evaluateInsertion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], size_t n, uint startDifferencePos)
+	{
+		return 10000;		
 	}
 
 };
@@ -700,97 +767,16 @@ int main() {
 
 ***********************************************************************************************/
 
-#ifdef TEST_BENCH
+#ifdef UNIT_TEST
 
-bool loadChromatidSequence(vector<string>& v)
+#define assertEqualHex(T,U) { cerr << ">> " << hex << U << endl << dec; assert(T == U); }
+
+#define assertEqual(T,U) { cerr << ">> " << U << endl; assert(T == U); } 
+
+int main() 
 {
-	const char *filename = "./data/chromatid20.fa";
+	initBits();
 
-	std::ifstream ifs(filename);
-	std::string str;
-	if (ifs.fail())
-	{
-		std::cerr << "失敗" << std::endl;
-	 	return false;
-	}
-
-	int lines = 0;
-
-    getline(ifs, str); // skip header
-    while (getline(ifs, str))
-    {
-    	if (++lines % 10000 == 0)
-    		std::cerr << ".";
-
-    	v.push_back(str);
-    }
-
-    std::cerr << " loaded" << std::endl;
-    return true;
-}
-
-bool loadReads(vector<string>& readNames, vector<string>& reads)
-{
-	const char *basename = "./data/small5";
-	string name1(basename);
-	string name2(basename);
-
-	name1.append(".fa1");
-	name2.append(".fa2");
-
-	std::ifstream ifs1(name1);
-	std::ifstream ifs2(name2);
-	if (ifs1.fail() || ifs2.fail())
-	{
-		std::cerr << "失敗" << std::endl;
-		return false;
-	}
-
-	int lines = 0;
-	std::string str1;
-	std::string str2;
-
-	while (getline(ifs1, str1) && getline(ifs2, str2))
-	{
-		if (++lines % 10000 == 0)
-			std::cerr << ".";
-
-		readNames.push_back(str1.substr(1));
-		readNames.push_back(str2.substr(1));
-
-		getline(ifs1, str1) && getline(ifs2, str2);
-		reads.push_back(str1);
-		reads.push_back(str2);
-
-		// if (reads.size() == 20)
-		// 	break;
-
-	}
-
-	std::cerr << " loaded " << reads.size() << "reads" << std::endl;
-	return true;
-}
-
-template<typename T, typename U>
-void assertEqualHex(T expected, U value)
-{
-	cerr << ">> " << hex << value << endl << dec;
-	assert(value == expected);
-}
-
-template<typename T, typename U>
-void assertEqual(T expected, U value)
-{
-	cerr << ">> " << value << endl;
-	assert(value == expected);
-}
-
-int main() {
-
-	DNASequencing dnaSequencing;
-
-	// unit test
-	retry = false;
 	string test_srq = "CTAG";
 	assertEqual(createReverseRead(test_srq), string("CTAG"));
 
@@ -834,41 +820,6 @@ int main() {
 	assertEqual(5, part[0]);
 
 	cerr << "unit test passed." << endl;
-
-	// start evaluating
-	clock_t begin = clock();
-
-	vector<string> chromatidSequence;
-	if (!loadChromatidSequence(chromatidSequence))
-		return 0;
-
-	vector<string> readNames;
-	vector<string> reads;
-
-	if (!loadReads(readNames, reads))
-		return 0;
-
-	dnaSequencing.passReferenceGenome(20, chromatidSequence);
-
-	dnaSequencing.initTest(0);
-
-	dnaSequencing.preProcessing();
-
-	clock_t end = clock();
-	cerr << "*** preprocess *** " << (end - begin) / (double) CLOCKS_PER_SEC << "(sec)" << endl;
-
-	begin = clock();
-
-	vector<string> results = dnaSequencing.getAlignment(reads.size(), 1.0, 1.0, readNames, reads);
-
-	end = clock();
-
-	cerr << "*** results *** " << (end - begin) / (double) CLOCKS_PER_SEC << "(sec)" << endl;
-	cout << "*** results *** " << (end - begin) / (double) CLOCKS_PER_SEC << "(sec)" << endl;
-	for (vector<string>::iterator it = results.begin(); it != results.end(); ++it)
-	{
-		cout << *it << endl;
-	}
 
 	return 1;
 }
