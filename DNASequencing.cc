@@ -147,22 +147,18 @@ void setBitwiseRead(uint64_t bitwiseRead[], string& c, size_t len)
 #define MASK_END UINT64_C(0xFFFFFFFFFFF00000)
 
 // posは文字位置(!=ビット位置)
-void setExtractedPart(uint64_t whole[], size_t len, uint64_t part[], size_t startPos)
+void setExtractedPart(uint64_t whole[], uint64_t part[], size_t startPos)
 {
 	size_t base = startPos >> 5; // / 32;
 	size_t offset = (startPos & 31) << 1; // (startPos % 32) * 2;
 	size_t r_offset = 64 - offset;
 
-	for (size_t i = 0; i < len; ++i) 
-	{
-		uint64_t cur = whole[base + i];
-		uint64_t nxt = whole[base + i + 1];
-
-		part[i] = (cur << offset) | (nxt >> r_offset);
-	}
-
+	part[0] = (whole[base + 0] << offset) | (whole[base + 0 + 1] >> r_offset);
+	part[1] = (whole[base + 1] << offset) | (whole[base + 1 + 1] >> r_offset);
+	part[2] = (whole[base + 2] << offset) | (whole[base + 2 + 1] >> r_offset);
+	part[3] = (whole[base + 3] << offset) | (whole[base + 3 + 1] >> r_offset);
+	part[4] = ((whole[base + 4] << offset) | (whole[base + 4 + 1] >> r_offset)) & MASK_END;
 	// お尻10文字は0fill: 20bit=2byte+4bit=0x00000
-	part[len - 1] &= MASK_END;
 }
 
 inline uint countBit(uint64_t h)
@@ -182,18 +178,20 @@ inline uint countBit(uint64_t h)
 
 
 // 2bitづつの区切りで、異なるときはそれぞれdiff=1としなくてはだめ
-uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
+inline uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
 {
-	uint cnt = 0;
-	for (size_t i = 0; i < len; ++i)
-	{
-		uint64_t val = v1[i] ^ v2[i];
-		uint64_t adjusted = (val & MASK_H) | ((val & MASK_L) >> 1);
+	uint64_t val0 = v1[0] ^ v2[0];
+	uint64_t val1 = v1[1] ^ v2[1];
+	uint64_t val2 = v1[2] ^ v2[2];
+	uint64_t val3 = v1[3] ^ v2[3];
+	uint64_t val4 = v1[4] ^ v2[4];
 
-		cnt += countBit(adjusted);
-	}
-
-	return cnt;
+	return 
+		  countBit((val0 & MASK_H) | ((val0 & MASK_L) >> 1))
+		+ countBit((val1 & MASK_H) | ((val1 & MASK_L) >> 1))
+		+ countBit((val2 & MASK_H) | ((val2 & MASK_L) >> 1))
+		+ countBit((val3 & MASK_H) | ((val3 & MASK_L) >> 1))
+		+ countBit((val4 & MASK_H) | ((val4 & MASK_L) >> 1));
 }
 
 // most left = 0
@@ -535,7 +533,26 @@ private:
 			uint64_t *bitwiseDNA = dnaMap[id];
 
 			// 1. bitwiseDNAをロード
-			setExtractedPart(bitwiseDNA, 5, bitwisePartialDNA, startPos);
+			size_t base = startPos >> 5; // / 32;
+
+			uint64_t *wb = bitwiseDNA + base;
+			uint64_t w0 = *wb;
+			uint64_t w1 = *(wb + 1);
+			uint64_t w2 = *(wb + 2);
+			uint64_t w3 = *(wb + 3);
+			uint64_t w4 = *(wb + 4);
+			uint64_t w5 = *(wb + 5);
+
+			size_t offset = (startPos & 31) << 1; // (startPos % 32) * 2;
+			size_t r_offset = 64 - offset;
+
+			bitwisePartialDNA[0] = (w0 << offset) | (w1 >> r_offset);
+			bitwisePartialDNA[1] = (w1 << offset) | (w2 >> r_offset);
+			bitwisePartialDNA[2] = (w2 << offset) | (w3 >> r_offset);
+			bitwisePartialDNA[3] = (w3 << offset) | (w4 >> r_offset);
+			bitwisePartialDNA[4] = ((w4 << offset) | (w5 >> r_offset)) & MASK_END;
+			// お尻10文字は0fill: 20bit=2byte+4bit=0x00000
+
 
 			// 3. xorと1-countでrate計算：あとは同じ
 			uint diff = countDiff(bitwisePartialDNA, bitwiseRead, 5);
