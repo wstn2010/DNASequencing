@@ -22,8 +22,12 @@
 #include <assert.h>
 #include <cstdint>
 
-// #define LOCAL_ONLY
-#define UNIT_TEST
+#define LOCAL_ONLY
+//#define UNIT_TEST
+
+#define LEN_READ 150
+#define LEN_TARGET 32
+
 
 using namespace std;
 
@@ -64,14 +68,14 @@ size_t bits[256];
 
 void initBits()
 {
-  bits['T'] = 0;
-  bits['A'] = 1;
-  bits['C'] = 2;
-  bits['G'] = 3;
+  bits['T'] = 0; // 00
+  bits['A'] = 1; // 01
+  bits['C'] = 2; // 10
+  bits['G'] = 3; // 11
   bits['N'] = 0; // dummy
 }
 
-size_t calcKey(string& c, size_t pos)
+inline size_t calcKey(string& c, size_t pos)
 {
   size_t k1 = bits[c[pos + 0]] << 22;
   size_t k2 = bits[c[pos + 1]] << 20;
@@ -142,11 +146,11 @@ void setBitwiseRead(uint64_t bitwiseRead[], string& c, size_t len)
 			
 #define MASK_END UINT64_C(0xFFFFFFFFFFF00000)
 
-
+// posは文字位置(!=ビット位置)
 void setExtractedPart(uint64_t whole[], size_t len, uint64_t part[], size_t startPos)
 {
-	size_t base = startPos / 32;
-	size_t offset = (startPos % 32) * 2;
+	size_t base = startPos >> 5; // / 32;
+	size_t offset = (startPos & 31) << 1; // (startPos % 32) * 2;
 
 	for (size_t i = 0; i < len; ++i) 
 	{
@@ -199,6 +203,7 @@ uint countDiff(uint64_t v1[], uint64_t v2[], size_t len)
 	return cnt;
 }
 
+// most left = 0
 uint nlz(uint64_t x)
 {
 	x |= x >> 1;
@@ -208,7 +213,7 @@ uint nlz(uint64_t x)
 	x |= x >> 16;
 	x |= x >> 32;
 
-	return countBit(x);
+	return 64 - countBit(x);
 }
 
 // 最初の差異ビットの位置を返す：だいたいでよい
@@ -230,8 +235,130 @@ uint findStartDifferencePos(uint64_t v1[], uint64_t v2[], size_t len)
 	return -1;
 }
 
+// posからnビット分取り出す
+// posは、v[]の通し位置: v[0]=0-63, v[1]=64-127,...
+// 注：ベクタサイズ未指定
+uint64_t extractRange(uint64_t whole[], size_t pos, size_t n)
+{
+	size_t base = pos >> 6; // / 64;
+	size_t offset = pos & 63; //% 64;
 
-#define LEN_READ 150
+	uint64_t cur = whole[base];
+	uint64_t nxt = whole[base + 1];
+
+	uint64_t result = (cur << offset) | (nxt >> (64 - offset));
+
+	// mask
+	size_t maskedBit = 64 - n;
+	uint64_t mask = ~((UINT64_C(1) << maskedBit) - 1); 
+	result &= mask;
+
+	return result;
+}
+
+// posは、v[]の通し位置: v[0]=0-63, v[1]=64-127,...
+// 注：ベクタサイズ決め打ち
+void copy(uint64_t part[], uint64_t whole[], size_t pos, size_t n)
+{
+	size_t base = pos >> 6; // / 64;
+	size_t offset = pos & 63; //% 64;
+
+	size_t copiedBits = 0;
+	size_t i = 0;
+	for (; i < 5; ++i) 
+	{
+		uint64_t cur = whole[base + i];
+		uint64_t nxt = whole[base + i + 1];
+
+		part[i] = (cur << offset) | (nxt >> (64 - offset));
+		copiedBits += 64;
+
+		if (copiedBits > n)
+		{
+			// mask
+			size_t maskedBit = copiedBits - n;
+			uint64_t mask = ~((UINT64_C(1) << maskedBit) - 1);
+			part[i++] &= mask;
+			break;
+		}
+	}
+
+	for (; i < 5; ++i)
+	{
+		part[i] = 0;
+	}
+
+}
+
+// deletionを発見したら,その部分以外の差異数を返す
+uint evaluateDeletion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], size_t n, uint pos)
+{
+	// cerr << "@dna : " << bitset<64>(bitwisePartialDNA[0]) << endl;
+	// cerr << "@read: " << bitset<64>(bitwiseRead[0]) << endl;
+
+	// 比較パターンを取り出す: READのposから、8文字(16bit): 後ろは0fill
+	uint64_t target = extractRange(bitwiseRead, pos, LEN_TARGET);
+	// cerr << "target:" << bitset<64>(target) << endl;
+
+	// DNAのstartDifferencePos以降で一致個所を探す: 2bitずつ移動
+
+	uint matchPos = 0;
+	for (uint i = pos + 4; i < 200; i += 2)
+	{
+		uint64_t dna = extractRange(bitwisePartialDNA, i, LEN_TARGET);
+		// cerr << "dna   :" << bitset<64>(dna) << endl;
+		if ((dna ^ target) == 0)
+		{
+			matchPos = i;
+			// cerr << "matchPos:" << dec << matchPos << endl;
+			break;
+		}
+
+	}
+
+	// 一致がないとか、ずれが4以下なら、でかい値を返す + 実行比較長が100以下
+	if (matchPos == 0)
+	{
+		return 10000;
+	}
+
+	uint shift = matchPos - pos;
+	// cerr << "shift:" << dec << shift << endl;
+
+	// コピーし、ズラす。pos　＋ずらし分より前はマスク
+	uint64_t copiedDNA[5], copiedRead[5];
+	// copiedDNA: matchPosが先頭になるようにbitwiseReadから取り出し
+	// copiedRead : posが先頭になるようにbitwiseReadから取り出し
+	// 末尾matchpos分は、0マスク
+
+	size_t effectiveReadBits = 300 - matchPos;
+	// if (n == 1) // debug
+	// 	effectiveReadBits = 64 - matchPos;
+
+	copy(copiedDNA, bitwisePartialDNA, matchPos, effectiveReadBits);
+	copy(copiedRead, bitwiseRead, pos, effectiveReadBits);
+	// cerr << "+dna : " << bitset<64>(copiedDNA[0]) << endl;
+	// cerr << "+read: " << bitset<64>(copiedRead[0]) << endl;
+
+	// diffを求めて返す
+	uint diff = countDiff(copiedDNA, copiedRead, n);
+
+	return diff;		
+}
+
+
+
+uint evaluateInsertion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], size_t n, uint startDifferencePos)
+{
+	return 10000;		
+}
+
+
+//////////////////////////////////////////////////////////////////
+// 
+// class DNASequencing
+//
+//////////////////////////////////////////////////////////////////
 
 
 class DNASequencing 
@@ -264,7 +391,7 @@ public:
 		}
 
 		// align with 32chars
-		size_t n = chromatids.size() % 32;
+		size_t n = chromatids.size() & 31; //chromatids.size() % 32;
 		if (n != 0)
 		{
 			chromatids += string(32 - n, 'N');
@@ -299,10 +426,11 @@ public:
 
 		for (int i = 0; i < n; ++i)
 		{
-			// if (i != 3) continue;
-
 			string normalRead = reads[i];
 			string reverseRead = createReverseRead(normalRead);
+
+			// if (readNames[i] != "sim28/1") continue;
+
 
 			Result normalResult(readNames[i], true);
 			Result reverseResult(readNames[i], false);
@@ -421,6 +549,11 @@ private:
 
 			// 3. xorと1-countでrate計算：あとは同じ
 			uint diff = countDiff(bitwisePartialDNA, bitwiseRead, 5);
+			switch (diff)
+			{
+				case 0: ++completedMatchCount; break;
+				case 1: ++semiCompleteMatchCount; break;
+			}
 
 			if (diff >= 2)
 			{
@@ -428,16 +561,24 @@ private:
 				uint startDifferencePos = findStartDifferencePos(bitwisePartialDNA, bitwiseRead, 5);
 				if (startDifferencePos != -1 && (24 + 4) < startDifferencePos && startDifferencePos < (300 - 80))
 				{
-					// 欠落一致トライ後のdiffを求める
-					uint newDiff = evaluateDeletion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos);
+					// 欠落一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
+					uint newDiff = evaluateDeletion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
+					// exit(0);
 					if (newDiff < diff)
 					{
 						// found a deletion
+						// cerr << "found deletion " << diff << " => " << newDiff << endl;	
+						// cout << "found deletion " << result.readName << endl;
+						// cout << "diff " << diff << endl;
+						// cout << "R:" << r << endl;
+						// cout << "startPos=" << startPos << endl;
+						// exit(0);
 						diff = newDiff;
 					} 
 					else
 					{
-						newDiff = evaluateInsertion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos);
+						// 挿入一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
+						newDiff = evaluateInsertion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
 						if (newDiff < diff)
 						{
 							// found an insertion
@@ -458,11 +599,6 @@ private:
 				bestId = id;
 			}
 
-			switch (diff)
-			{
-				case 0: ++completedMatchCount; break;
-				case 1: ++semiCompleteMatchCount; break;
-			}
 
 		}
 
@@ -480,16 +616,6 @@ private:
 		result.endPos = bestPos + LEN_READ;
 		result.score = bestRate;
 		result.chromatidSequenceId = bestId;
-	}
-
-	uint evaluateDeletion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], size_t n, uint startDifferencePos)
-	{
-		return 10000;		
-	}
-
-	uint evaluateInsertion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], size_t n, uint startDifferencePos)
-	{
-		return 10000;		
 	}
 
 };
@@ -801,7 +927,11 @@ int main()
 	setExtractedPart(whole, 5, part, 4);
 	assertEqualHex(part[0], UINT64_C(0xFF00FF00FF00FF00));
 
+	// test: countBit
+
 	assertEqual(32, countBit(UINT64_C(0xFF00FF00FF00FF00)));
+
+	// test: countDiff
 
 	uint64_t v1[1], v2[1];
 	v1[0] = UINT64_C(0xFF00FF00FF00FF00);
@@ -811,6 +941,8 @@ int main()
 	v2[0] = UINT64_C(0xFF10FF10FF00F000);
 	assertEqual(4, countDiff(v1, v2, 1));
 
+	// test: setBitwiseRead
+
 	string read1 = "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT";
 	setBitwiseRead(part, read1, 1);
 	assertEqual(0, part[0]);
@@ -818,6 +950,51 @@ int main()
 	string read2 = "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTAA";
 	setBitwiseRead(part, read2, 1);
 	assertEqual(5, part[0]);
+
+	// test: nlz
+
+	assertEqual(7, nlz(UINT64_C(0x0100000000000000)));
+
+	assertEqual(1, nlz(UINT64_C(0x6000000000000000)));
+
+	assertEqual(1, nlz(UINT64_C(0x60C0F0C0F0C0F0C0)));
+
+	// test: findStartDifferencePos
+
+	uint pos;
+	v1[0] = UINT64_C(0x7F00FF00FF00FF00);
+	v2[0] = UINT64_C(0xFF00FF00FF02FF00);
+	pos = findStartDifferencePos(v1, v2, 1);
+	assertEqual(1, pos);
+
+	v1[0] = UINT64_C(0xFF00FF00FF00FF00);
+	v2[0] = UINT64_C(0xFF00FF00FF02FF00);
+	pos = findStartDifferencePos(v1, v2, 1);
+	assertEqual(47, pos);
+
+	// test: extractRange
+	whole[0] = UINT64_C(0xFFFFFFFFFFFFFFFF);
+	whole[1] = UINT64_C(0x0000000000000000);
+	assertEqualHex(UINT64_C(0xFFFF000000000000), extractRange(whole, 32, 16));
+
+	assertEqualHex(UINT64_C(0xFFFF000000000000), extractRange(whole, 48, 32));
+
+	// test: copy
+	for (size_t i = 0; i < 6; ++i)
+	{
+		whole[i] = UINT64_C(0x8811223344556677);
+	}
+	copy(part, whole, 48, 32);
+	assertEqualHex(UINT64_C(0x6677881100000000), part[0]);
+	assertEqualHex(UINT64_C(0x0000000000000000), part[1]);
+
+	// test: evaluateDeletion
+	v1[0] = UINT64_C(0x0011223344556677);
+	v2[0] = UINT64_C(0x0011334455667788);
+	pos = findStartDifferencePos(v1, v2, 1);
+	assertEqual(19, pos);
+	uint diff = evaluateDeletion(v1, v2, 1, pos - 1);
+	assertEqual(0, diff);
 
 	cerr << "unit test passed." << endl;
 

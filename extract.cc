@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
     
     std::cerr << "startPos:" << startPos << std::endl;
 
-    const char *filename = "chromatid20.fa";
+    const char *filename = "data/chromatid20.fa";
     size_t length = 150;
 
     std::string whole;
