@@ -601,7 +601,7 @@ private:
 			result.endPos = bestPos + LEN_READ;
 			result.score = 1.0 / semiCompleteMatchCount;
 			result.chromatidSequenceId = bestId;
-			return false;
+			return true;
 		} 
 		else
 		{
