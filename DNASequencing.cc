@@ -165,10 +165,8 @@ void setExtractedPart(uint64_t whole[], size_t len, uint64_t part[], size_t star
 	part[len - 1] &= MASK_END;
 }
 
-uint countBit(uint64_t val)
+inline uint countBit(uint64_t h)
 {
-	uint64_t h = val;
-
 	h = (h & UINT64_C(0x5555555555555555)) + ((h >> 1) & UINT64_C(0x5555555555555555));
 	h = (h & UINT64_C(0x3333333333333333)) + ((h >> 2) & UINT64_C(0x3333333333333333));
 	h = (h & UINT64_C(0x0f0f0f0f0f0f0f0f)) + ((h >> 4) & UINT64_C(0x0f0f0f0f0f0f0f0f));
@@ -177,23 +175,6 @@ uint countBit(uint64_t val)
 	h = (h & UINT64_C(0x00000000ffffffff)) + ((h >>32) & UINT64_C(0x00000000ffffffff));
 
 	return h;
-
-	// // XXX: できれば64bitでやりたい
-	// uint32_t h = (uint32_t)(val >> 32);
-	// h = (h & 0x55555555) + ((h >> 1) & 0x55555555);
-	// h = (h & 0x33333333) + ((h >> 2) & 0x33333333);
-	// h = (h & 0x0f0f0f0f) + ((h >> 4) & 0x0f0f0f0f);
-	// h = (h & 0x00ff00ff) + ((h >> 8) & 0x00ff00ff);
-	// h = (h & 0x0000ffff) + ((h >>16) & 0x0000ffff);
-
-	// uint32_t l = (uint32_t)(val & UINT64_C(0x00000000ffffffff));
-	// l = (l & 0x55555555) + ((l >> 1) & 0x55555555);
-	// l = (l & 0x33333333) + ((l >> 2) & 0x33333333);
-	// l = (l & 0x0f0f0f0f) + ((l >> 4) & 0x0f0f0f0f);
-	// l = (l & 0x00ff00ff) + ((l >> 8) & 0x00ff00ff);
-	// l = (l & 0x0000ffff) + ((l >>16) & 0x0000ffff);
-
-	// return h + l;
 }
 
 #define MASK_L UINT64_C(0xAAAAAAAAAAAAAAAA)
