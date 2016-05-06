@@ -344,6 +344,10 @@ uint evaluateInsertion(uint64_t bitwisePartialDNA[], uint64_t bitwiseRead[], siz
 	return 10000;		
 }
 
+uint max(uint a, uint b)
+{
+	return a > b ? a : b;
+}
 
 //////////////////////////////////////////////////////////////////
 // 
@@ -451,11 +455,16 @@ public:
 
 		cerr << " done." << endl;
 
+		// cerr << "max_completedMatchCount = " << max_completedMatchCount << endl;
+		// cerr << "max_semiCompletedMatchCount = " << max_semiCompletedMatchCount << endl;		
+
 		return results;
 	}
 
 private:
 
+	uint max_completedMatchCount = 0;
+	uint max_semiCompletedMatchCount = 0;
 
 	uint64_t *createBitwiseDNA(string& chromatids)
 	{
@@ -591,7 +600,7 @@ private:
 		{
 			result.startPos = bestPos;
 			result.endPos = bestPos + LEN_READ;
-			result.score = 1.0 / completedMatchCount;
+			result.score = 1.0 / (completedMatchCount + semiCompleteMatchCount);
 			result.chromatidSequenceId = bestId;
 			return true;
 		} 
