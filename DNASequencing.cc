@@ -429,9 +429,6 @@ public:
 			string normalRead = reads[i];
 			string reverseRead = createReverseRead(normalRead);
 
-			// if (readNames[i] != "sim28/1") continue;
-
-
 			Result normalResult(readNames[i], true);
 			Result reverseResult(readNames[i], false);
 
@@ -506,11 +503,7 @@ private:
 
 	void align(Result& result, string& r)
 	{
-		size_t bestPos = -1;
-		size_t bestId = 0;
-		float bestRate = 0.0;
 		uint64_t bitwisePartialDNA[5];
-		uint64_t bestBitwisePartialDNA[5];
 
 		// 0. bitwiseReadを生成
 		// align to x32
@@ -534,6 +527,10 @@ private:
 		int completedMatchCount = 0;
 		int semiCompleteMatchCount = 0;
 
+		size_t bestPos = -1;
+		size_t bestId = 0;
+		size_t bestDiff = 10000;
+
 		for (vector<size_t>::iterator it = startPositions.begin(); it != startPositions.end(); ++it)
 		{
 			size_t startPos = *it;
@@ -555,67 +552,73 @@ private:
 				case 1: ++semiCompleteMatchCount; break;
 			}
 
-			if (diff >= 2)
+
+			// search deletion
+			// if (diff > 4) 
+			// {
+			// 	// 通しビット：24 < v < 300 - 80 までの値
+			// 	uint startDifferencePos = findStartDifferencePos(bitwisePartialDNA, bitwiseRead, 5);
+			// 	if (startDifferencePos != -1 && (24 + 4) < startDifferencePos && startDifferencePos < (300 - 80))
+			// 	{
+			// 		// 欠落一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
+			// 		uint newDiff = evaluateDeletion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
+			// 		if (newDiff < diff)
+			// 		{
+			// 			diff = newDiff;
+
+			// 			// if (diff <= 1)
+			// 			// {
+			// 			// 	result.startPos = startPos;
+			// 			// 	result.endPos = startPos + LEN_READ;
+			// 			// 	result.score = (1.0 - (diff / (float)LEN_READ)) * 0.9;
+			// 			// 	result.chromatidSequenceId = id;
+			// 			// 	return;
+			// 			// }
+
+			// 		} 
+			// 		else
+			// 		{
+			// 			// 挿入一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
+			// 			newDiff = evaluateInsertion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
+			// 			if (newDiff < diff)
+			// 			{
+			// 				// found an insertion
+			// 				diff = newDiff;
+			// 			}
+			// 		}
+			// 	}
+			// }
+
+			if (diff < bestDiff)
 			{
-				// 通しビット：24 < v < 300 - 80 までの値
-				uint startDifferencePos = findStartDifferencePos(bitwisePartialDNA, bitwiseRead, 5);
-				if (startDifferencePos != -1 && (24 + 4) < startDifferencePos && startDifferencePos < (300 - 80))
-				{
-					// 欠落一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
-					uint newDiff = evaluateDeletion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
-					// exit(0);
-					if (newDiff < diff)
-					{
-						// found a deletion
-						// cerr << "found deletion " << diff << " => " << newDiff << endl;	
-						// cout << "found deletion " << result.readName << endl;
-						// cout << "diff " << diff << endl;
-						// cout << "R:" << r << endl;
-						// cout << "startPos=" << startPos << endl;
-						// exit(0);
-						diff = newDiff;
-					} 
-					else
-					{
-						// 挿入一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
-						newDiff = evaluateInsertion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
-						if (newDiff < diff)
-						{
-							// found an insertion
-							diff = newDiff;
-						}
-					}
-
-				}
-
-			}
-
-			float rate = 1 - diff / (float)LEN_READ;
-
-			if (rate > bestRate)
-			{
-				bestRate = rate;
+				bestDiff = diff;				
 				bestPos = startPos;
 				bestId = id;
 			}
-
-
 		}
 
-		// 完全一致が複数ある場合
 		if (completedMatchCount > 1)
 		{
-			bestRate = 1.0 / completedMatchCount;
+			result.startPos = bestPos;
+			result.endPos = bestPos + LEN_READ;
+			result.score = 1.0 / completedMatchCount;
+			result.chromatidSequenceId = bestId;
 		} 
 		else if (semiCompleteMatchCount > 1)
 		{
-			bestRate = 1.0 / semiCompleteMatchCount;
+			result.startPos = bestPos;
+			result.endPos = bestPos + LEN_READ;
+			result.score = 1.0 / semiCompleteMatchCount;
+			result.chromatidSequenceId = bestId;
 		} 
+		else
+		{
+			result.startPos = bestPos;
+			result.endPos = bestPos + LEN_READ;
+			result.score = (1.0 - (bestDiff / (float)LEN_READ)) / (bestDiff + 1);
+			result.chromatidSequenceId = bestId;
+		}
 
-		result.startPos = bestPos;
-		result.endPos = bestPos + LEN_READ;
-		result.score = bestRate;
-		result.chromatidSequenceId = bestId;
 	}
 
 };
