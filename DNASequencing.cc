@@ -507,7 +507,8 @@ private:
 		size_t key = calcKey(r, 0);
 		vector<size_t>& startPositions = fastRef[key];
 
-		if (startPositions.size() == 0)
+		size_t sz = startPositions.size();
+		if (sz == 0)
 		{
 			// algorythm broken
 			result.startPos = 1;
@@ -524,13 +525,12 @@ private:
 		size_t bestId = 0;
 		size_t bestDiff = 10000;
 
-		for (vector<size_t>::iterator it = startPositions.begin(); it != startPositions.end(); ++it)
+		for (size_t i = 0; i < sz; ++i)
 		{
-			size_t startPos = *it;
+			size_t loc = startPositions[i];
 
-			size_t id = startPos >> 32;
-
-			startPos = startPos & 0x00000000ffffffff;
+			size_t id = loc >> 32;
+			size_t startPos = loc & 0x00000000ffffffff;
 
 			uint64_t *bitwiseDNA = dnaMap[id];
 
@@ -545,47 +545,11 @@ private:
 				case 1: ++semiCompleteMatchCount; break;
 			}
 
-
-			// search deletion
-			// if (diff > 4) 
-			// {
-			// 	// 通しビット：24 < v < 300 - 80 までの値
-			// 	uint startDifferencePos = findStartDifferencePos(bitwisePartialDNA, bitwiseRead, 5);
-			// 	if (startDifferencePos != -1 && (24 + 4) < startDifferencePos && startDifferencePos < (300 - 80))
-			// 	{
-			// 		// 欠落一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
-			// 		uint newDiff = evaluateDeletion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
-			// 		if (newDiff < diff)
-			// 		{
-			// 			diff = newDiff;
-
-			// 			// if (diff <= 1)
-			// 			// {
-			// 			// 	result.startPos = startPos;
-			// 			// 	result.endPos = startPos + LEN_READ;
-			// 			// 	result.score = (1.0 - (diff / (float)LEN_READ)) * 0.9;
-			// 			// 	result.chromatidSequenceId = id;
-			// 			// 	return;
-			// 			// }
-
-			// 		} 
-			// 		else
-			// 		{
-			// 			// 挿入一致トライ後のdiffを求める: pos - 1の1は、差異は2bitTACGの下位ビットに立つため
-			// 			newDiff = evaluateInsertion(bitwisePartialDNA, bitwiseRead, 5, startDifferencePos - 1);
-			// 			if (newDiff < diff)
-			// 			{
-			// 				// found an insertion
-			// 				diff = newDiff;
-			// 			}
-			// 		}
-			// 	}
-			// }
-
 			if (diff < bestDiff)
 			{
 				bestDiff = diff;				
 				bestPos = startPos;
+
 				bestId = id;
 			}
 		}
