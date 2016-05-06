@@ -421,12 +421,27 @@ public:
 			string reverseRead = createReverseRead(normalRead);
 
 			Result normalResult(readNames[i], true);
-			Result reverseResult(readNames[i], false);
+			bool foundCompleteMatch = align(normalResult, normalRead);
 
-			align(normalResult, normalRead);
-			align(reverseResult, reverseRead);
+			if (foundCompleteMatch)
+			{
+				results.push_back(toResultStr(normalResult));
+			}
+			else 
+			{
+				Result reverseResult(readNames[i], false);
+				foundCompleteMatch = align(reverseResult, reverseRead);
 
-			results.push_back(toResultStr(normalResult.score > reverseResult.score ? normalResult : reverseResult));
+				if (foundCompleteMatch)
+				{
+					results.push_back(toResultStr(reverseResult));
+				}
+				else
+				{
+					results.push_back(toResultStr(normalResult.score > reverseResult.score ? normalResult : reverseResult));
+				}
+			}
+
 
 			if (++cnt % 10000 == 0)
 			{
@@ -492,7 +507,8 @@ private:
 		}
 	}
 
-	void align(Result& result, string& r)
+	// 完全一致あり？
+	bool align(Result& result, string& r)
 	{
 		uint64_t bitwisePartialDNA[5];
 
@@ -513,7 +529,7 @@ private:
 			result.endPos = 1 + LEN_READ;
 			result.score = 0.0;
 			result.chromatidSequenceId = 20;
-			return;
+			return false;
 		}
 
 		int completedMatchCount = 0;
@@ -577,6 +593,7 @@ private:
 			result.endPos = bestPos + LEN_READ;
 			result.score = 1.0 / completedMatchCount;
 			result.chromatidSequenceId = bestId;
+			return true;
 		} 
 		else if (semiCompleteMatchCount > 1)
 		{
@@ -584,6 +601,7 @@ private:
 			result.endPos = bestPos + LEN_READ;
 			result.score = 1.0 / semiCompleteMatchCount;
 			result.chromatidSequenceId = bestId;
+			return false;
 		} 
 		else
 		{
@@ -591,6 +609,7 @@ private:
 			result.endPos = bestPos + LEN_READ;
 			result.score = (1.0 - (bestDiff / (float)LEN_READ)) / (bestDiff + 1);
 			result.chromatidSequenceId = bestId;
+			return false;
 		}
 
 	}
